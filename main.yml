@@ -1,0 +1,55 @@
+---
+#
+# Download latest Raspbian image and write to SD card
+#
+# Run playbook: % ansible-playbook main.yml -v
+
+- name: Download and Install Raspbian to SD
+  hosts: localhost
+  vars:
+    raspbian_image_url: https://downloads.raspberrypi.org/raspbian_lite_latest
+    raspbian_sdcard: /dev/mmcblk0
+  pre_tasks:
+    - name: Ensure playbook is running on Linux
+      assert:
+        that: |
+          ansible_system == 'Linux'
+  tasks:
+    - name: Create temp dir for extract image
+      tempfile:
+        state: directory
+        suffix: -raspbian
+      register: tempdir
+
+    - name: Download Raspbian image
+      get_url:
+        url: "{{ raspbian_image_url }}"
+        dest: "{{ tempdir.path }}"
+      register: download_image
+
+    - name: Extract image
+      unarchive:
+        src: "{{ download_image.dest }}"
+        dest: "{{ tempdir.path }}"
+      register: extract_image
+
+    - name: Find filename of image
+      find:
+        paths: "{{ tempdir.path }}"
+        patterns: '*.img'
+      register: extracted_image_file
+
+    - name: Write image to SD
+      command: |-
+        dd bs=1M
+        if="{{ extracted_image_file.files[0].path }}"
+        of="{{ raspbian_sdcard }}"
+        conv=fsync
+        status=progress
+      register: write_img
+      become: True
+
+    - name: Cleanup
+      file:
+        path: "{{ tempdir.path }}"
+        state: absent
