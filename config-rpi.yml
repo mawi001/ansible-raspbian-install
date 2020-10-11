@@ -1,0 +1,51 @@
+---
+- name: configure RPI
+  hosts:
+    - localhost
+  vars:
+    raspbian_ipaddr: 10.54.0.240
+    raspbian_gateway: 10.54.0.254
+    raspbian_hostname: master-01
+  tasks:
+    - name: get mountpoint for SD card /dev/mmcblk0p2
+      set_fact:
+        boot_mountpoint: "{{ hostvars[inventory_hostname].ansible_mounts | selectattr('device', 'equalto', '/dev/mmcblk0p1' ) | list | first }}"
+        root_mountpoint: "{{ hostvars[inventory_hostname].ansible_mounts | selectattr('device', 'equalto', '/dev/mmcblk0p2' ) | list | first }}"
+
+    - debug: var=root_mountpoint.mount
+
+    - name: set static ip
+      blockinfile:
+        path: "{{ root_mountpoint.mount }}/etc/dhcpcd.conf"
+        block: |
+          interface eth0
+          static ip_address={{ raspbian_ipaddr }}
+          static_routers={{ raspbian_gateway }}
+          static_domain_name_servers={{ raspbian_gateway }}
+      become: yes
+
+    - name: set hostname
+      copy:
+        dest: "{{ root_mountpoint.mount }}/etc/hostname"
+        content: "{{ raspbian_hostname }}"
+      become: yes
+
+    - name: set hostname in hostfile
+      lineinfile:
+        path: "{{ root_mountpoint.mount }}/etc/hosts"
+        line: "127.0.1.1 {{ raspbian_hostname }}"
+        regexp: '^127.0.1.1'
+      become: yes
+
+    - name: enable ssh on headless Raspberry Pi
+      copy:
+        dest: "{{ boot_mountpoint.mount }}/SSH"
+        content: ''
+      become: yes
+
+    - name: sync filesystems
+      shell: sync
+
+    - name: umount /dev/mmcblk0
+      shell: umount /dev/mmcblk0p1 /dev/mmcblk0p2
+      become: yes
